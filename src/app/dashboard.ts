@@ -533,30 +533,44 @@ export class Dashboard implements OnDestroy {
   }
 
   async onFileSelected(event: Event, target: 'cover' | 'photos') {
-    const input = event.target as HTMLInputElement;
-    if (!input.files?.length) return;
+  const input = event.target as HTMLInputElement;
+  if (!input.files?.length) return;
 
-    this.processingFiles.set(true);
+  this.processingFiles.set(true);
+
+  try {
     const files = Array.from(input.files);
-    
-    try {
-      if (target === 'cover') {
-        const dataUrl = await this.readFile(files[0]);
-        this.entryForm.patchValue({ coverUrl: dataUrl });
-      } else {
-        const dataUrls = await Promise.all(files.map(f => this.readFile(f)));
-        const current = this.entryForm.get('photosRaw')?.value || '';
-        const newVal = [...(current ? current.split('\n') : []), ...dataUrls].join('\n');
-        this.entryForm.patchValue({ photosRaw: newVal });
-      }
-    } catch (err) {
-      console.error('File reading failed', err);
-      alert('Falha ao ler arquivos. Eles podem ser muito grandes.');
-    } finally {
-      this.processingFiles.set(false);
-      input.value = ''; // Reset input
+
+    const uploadedUrls = await Promise.all(
+      files.map(file => this.dataService.uploadImage(file))
+    );
+
+    if (target === 'cover') {
+      this.entryForm.patchValue({
+        coverUrl: uploadedUrls[0]
+      });
+    } else {
+      const current =
+        this.entryForm.get('photosRaw')?.value || '';
+
+      const newVal = [
+        ...(current ? current.split('\n') : []),
+        ...uploadedUrls
+      ].join('\n');
+
+      this.entryForm.patchValue({
+        photosRaw: newVal
+      });
     }
+
+  } catch (err) {
+    console.error(err);
+    alert('Erro no upload');
+  } finally {
+    this.processingFiles.set(false);
+    input.value = '';
   }
+}
 
   async onAvatarSelected(event: Event) {
     const input = event.target as HTMLInputElement;

@@ -7,6 +7,12 @@ export interface Category {
   id: string;
   name: string;
 }
+import { createClient } from '@supabase/supabase-js';
+
+export const supabase = createClient(
+  'https://stnrdvhlevymguwkhdbm.supabase.co',
+  'sb_publishable_gVxdcxvWLTRjJx8n4XGIpA_5syPheKX'
+);
 
 export interface Entry {
   id: string;
@@ -231,4 +237,31 @@ export class DataService {
   incrementViews() {
     this.http.post<{ views: number }>('/api/profile/increment-views', {}).subscribe();
   }
+  async uploadImage(file: File): Promise<string> {
+  try {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2)}.${fileExt}`;
+
+    const { error } = await supabase.storage
+      .from('portfolio')
+      .upload(fileName, file);
+
+    if (error) {
+      console.error('Erro upload:', error);
+      throw error;
+    }
+
+    const { data } = supabase.storage
+      .from('portfolio')
+      .getPublicUrl(fileName);
+
+    return data.publicUrl;
+
+  } catch (err) {
+    console.error(err);
+    throw err;
+  }
+}
 }
