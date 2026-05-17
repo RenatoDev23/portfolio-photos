@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+@import "tailwindcss";
+
+:root {
+  --brand-bg: #FFFFFF;
+  --brand-card-bg: #FFFFFF;
+  --brand-primary: #000000;
+  --brand-secondary: #71717A;
+  --brand-border: #E4E4E7;
+}
+
+html.dark, body.dark, .dark {
+  --brand-bg: #000000;
+  --brand-card-bg: #000000;
+  --brand-primary: #FFFFFF;
+  --brand-secondary: #A1A1AA;
+  --brand-border: #27272A;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --color-brand-bg: var(--brand-bg);
+  --color-brand-card-bg: var(--brand-card-bg);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-border: var(--brand-border);
+}
+
+@layer base {
+  html, body {
+    @apply antialiased transition-colors duration-500 min-h-screen;
+    background-color: var(--brand-bg);
+    color: var(--brand-primary);
+    margin: 0;
+    padding: 0;
+  }
+}
+
+.cinematic-grain {
+  position: relative;
+}
+
+.cinematic-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 50;
+}
+
+@keyframes music-bar {
+  0%, 100% { height: 40%; }
+  50% { height: 100%; }
+}

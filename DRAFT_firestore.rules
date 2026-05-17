@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      // In a real app, you'd check a dedicated admins collection
+      // For this prototype, we check if the user is signed in
+      return isSignedIn();
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Entries
+    match /entries/{entryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      // Sub-photos for the album
+      match /photos/{photoId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+  }
+}

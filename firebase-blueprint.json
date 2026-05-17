@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "Category": {
+      "title": "Category",
+      "description": "Category for organizing the gallery",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Entry": {
+      "title": "Gallery Entry",
+      "description": "A main entry in the portfolio",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "credits": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "photos": { 
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "coverUrl", "categoryId"]
+    },
+    "Profile": {
+      "title": "User Profile",
+      "description": "Global settings for the portfolio",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "musicUrl": { "type": "string" },
+        "isDarkMode": { "type": "boolean" },
+        "views": { "type": "number" }
+      },
+      "required": ["name", "avatarUrl"]
+    }
+  },
+  "firestore": {
+    "categories": {
+      "schema": "Category",
+      "description": "Global categories"
+    },
+    "entries": {
+      "schema": "Entry",
+      "description": "Main gallery entries"
+    },
+    "settings/profile": {
+      "schema": "Profile",
+      "description": "Application profile and settings"
+    }
+  }
+}
