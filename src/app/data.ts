@@ -227,16 +227,29 @@ export class DataService {
     return computed(() => this.entries().find(e => e.id === id));
   }
 
-  updateProfile(name: string, avatarUrl: string, musicUrl: string = this.profile().musicUrl, isDarkMode: boolean = this.profile().isDarkMode) {
-    this.profile.update(p => ({ ...p, name, avatarUrl, musicUrl, isDarkMode }));
-    this.http.post<Profile>('/api/profile', { name, avatarUrl, musicUrl, isDarkMode }).subscribe({
-      error: () => this.initData()
-    });
-  }
+  updateProfile(profile: Partial<Profile>) {
+  const current = this.profile();
+
+  const updated = {
+    ...current,
+    ...profile
+  };
+
+  this.profile.set(updated);
+
+  return this.http.post('/api/profile', updated).subscribe({
+    next: () => {
+      console.log('Profile updated successfully');
+    },
+    error: (err) => {
+      console.error('Error updating profile:', err);
+    }
+  });
+}
 
   incrementViews() {
-    this.http.post<{ views: number }>('/api/profile/increment-views', {}).subscribe();
-  }
+  return this.http.post('/api/profile/increment-views', {}).subscribe();
+}
   async uploadImage(file: File): Promise<string> {
   try {
     const fileExt = file.name.split('.').pop();
