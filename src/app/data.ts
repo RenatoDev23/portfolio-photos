@@ -240,6 +240,7 @@ export class DataService {
   async uploadImage(file: File): Promise<string> {
   try {
     const fileExt = file.name.split('.').pop();
+
     const fileName = `${Date.now()}-${Math.random()
       .toString(36)
       .substring(2)}.${fileExt}`;
@@ -253,11 +254,13 @@ export class DataService {
       throw error;
     }
 
-    const { data } = supabase.storage
+    const { data: publicUrlData } = supabase.storage
       .from('portfolio')
       .getPublicUrl(fileName);
 
-    return data.publicUrl;
+    console.log('URL DA IMAGEM:', publicUrlData.publicUrl);
+
+    return publicUrlData.publicUrl;
 
   } catch (err) {
     console.error(err);
