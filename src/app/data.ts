@@ -48,7 +48,7 @@ export class DataService {
       const [cats, ents, prof] = await Promise.all([
         supabase.from('categories').select('*').order('name'),
         supabase.from('entries').select('*').order('id', { ascending: false }),
-        supabase.from('profile').select('*').eq('id', 1).single()
+        supabase.from('profile').select('*').limit(1).single()
       ]);
 
       if (cats.data) this.categories.set(cats.data.map(this.mapCategory));
