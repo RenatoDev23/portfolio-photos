@@ -83,8 +83,14 @@ export class Gallery {
   profile = this.dataService.profile;
 
   filteredEntries = computed(() => {
-    const f = this.filter();
-    if (f === 'all') return this.entries();
-    return this.entries().filter(e => e.categoryId === f);
-  });
+
+  console.log('ENTRIES:', this.entries());
+
+  const f = this.filter();
+
+  if (f === 'all') return this.entries();
+
+  return this.entries().filter(e => e.categoryId === f);
+
+});
 }
