@@ -1,12 +1,5 @@
 import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
-import { io, Socket } from 'socket.io-client';
-
-export interface Category {
-  id: string;
-  name: string;
-}
 import { createClient } from '@supabase/supabase-js';
 
 export const supabase = createClient(
@@ -14,113 +7,105 @@ export const supabase = createClient(
   'sb_publishable_gVxdcxvWLTRjJx8n4XGIpA_5syPheKX'
 );
 
+export interface Category { id: string; name: string; }
 export interface Entry {
-  id: string;
-  title: string;
-  credits: string;
-  categoryId: string;
-  coverUrl: string;
-  photos: string[];
-  createdAt?: string | Date;
+  id: string; title: string; credits: string;
+  categoryId: string; coverUrl: string; photos: string[];
+}
+export interface Profile {
+  name: string; avatarUrl: string; musicUrl: string;
+  isDarkMode: boolean; views: number;
 }
 
-export interface Profile {
-  name: string;
-  avatarUrl: string;
-  musicUrl: string;
-  isDarkMode: boolean;
-  views: number;
-}
+const DEFAULT_PROFILE: Profile = {
+  name: 'RENATO SANTOS',
+  avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=256&h=256&auto=format&fit=crop',
+  musicUrl: '', isDarkMode: false, views: 0
+};
 
 @Injectable({ providedIn: 'root' })
 export class DataService {
   private platformId = inject(PLATFORM_ID);
-  private http = inject(HttpClient);
-  private socket: Socket | null = null;
-  
-  isAuthorized = signal<boolean>(false);
-  categories = signal<Category[]>([]);
-  entries = signal<Entry[]>([]);
-  deletingIds = signal<Set<string>>(new Set());
-  dbStatus = signal<'checking' | 'connected' | 'error'>('checking');
-  profile = signal<Profile>({
-    name: 'RENATO SANTOS',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=256&h=256&auto=format&fit=crop',
-    musicUrl: '',
-    isDarkMode: false,
-    views: 0
-  });
+
+  isAuthorized  = signal(false);
+  categories    = signal<Category[]>([]);
+  entries       = signal<Entry[]>([]);
+  deletingIds   = signal<Set<string>>(new Set());
+  dbStatus      = signal<'checking' | 'connected' | 'error'>('checking');
+  profile       = signal<Profile>(DEFAULT_PROFILE);
 
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
-      const savedAuth = localStorage.getItem('admin_auth');
-      if (savedAuth === 'true') {
-        this.isAuthorized.set(true);
-      }
-
+      const saved = localStorage.getItem('admin_auth');
+      if (saved === 'true') this.isAuthorized.set(true);
       this.initData();
-      this.initSocket();
-      this.checkDbHealth();
+      this.initRealtime();
     }
   }
 
-  private checkDbHealth() {
-    this.http.get<{status: string}>('/api/health').subscribe({
-      next: (val) => {
-        if (val.status === 'ok') this.dbStatus.set('connected');
-        else this.dbStatus.set('error');
-      },
-      error: () => this.dbStatus.set('error')
-    });
+  private async initData() {
+    try {
+      const [cats, ents, prof] = await Promise.all([
+        supabase.from('categories').select('*').order('name'),
+        supabase.from('entries').select('*').order('id', { ascending: false }),
+        supabase.from('profile').select('*').eq('id', 1).single()
+      ]);
+
+      if (cats.data) this.categories.set(cats.data.map(this.mapCategory));
+      if (ents.data) this.entries.set(ents.data.map(this.mapEntry));
+      if (prof.data) this.profile.set(this.mapProfile(prof.data));
+
+      this.dbStatus.set('connected');
+    } catch {
+      this.dbStatus.set('error');
+    }
   }
 
-  private initData() {
-    this.http.get<Category[]>('/api/categories').subscribe(cats => this.categories.set(cats));
-    this.http.get<Entry[]>('/api/entries').subscribe(ents => this.entries.set(ents));
-    this.http.get<Profile>('/api/profile').subscribe(prof => this.profile.set(prof));
+  private initRealtime() {
+    supabase.channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
+        supabase.from('categories').select('*').order('name').then(({ data }) => {
+          if (data) this.categories.set(data.map(this.mapCategory));
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, () => {
+        supabase.from('entries').select('*').order('id', { ascending: false }).then(({ data }) => {
+          if (data) this.entries.set(data.map(this.mapEntry));
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profile' }, () => {
+        supabase.from('profile').select('*').eq('id', 1).single().then(({ data }) => {
+          if (data) this.profile.set(this.mapProfile(data));
+        });
+      })
+      .subscribe();
   }
 
-  private initSocket() {
-    this.socket = io();
+  // Mappers: snake_case → camelCase
+  private mapCategory(c: any): Category {
+    return { id: c.id, name: c.name };
+  }
 
-    this.socket.on('category:added', (cat: Category) => {
-      this.categories.update(cats => {
-        if (cats.some(c => c.id === cat.id)) return cats;
-        return [...cats, cat];
-      });
-    });
+  private mapEntry(e: any): Entry {
+    return {
+      id: e.id, title: e.title, credits: e.credits || '',
+      categoryId: e.category_id, coverUrl: e.cover_url,
+      photos: e.photos || []
+    };
+  }
 
-    this.socket.on('category:deleted', (id: string) => {
-      this.categories.update(cats => cats.filter(c => c.id !== id));
-    });
-
-    this.socket.on('entry:added', (entry: Entry) => {
-      this.entries.update(ents => [entry, ...ents]);
-    });
-
-    this.socket.on('entry:updated', (updated: Entry) => {
-      this.entries.update(ents => ents.map(e => e.id === updated.id ? { ...e, ...updated } : e));
-    });
-
-    this.socket.on('entry:deleted', (id: string) => {
-      this.entries.update(ents => ents.filter(e => e.id !== id));
-    });
-
-    this.socket.on('profile:updated', (prof: Profile) => {
-      this.profile.update(p => ({ ...p, ...prof }));
-    });
-
-    this.socket.on('profile:views', (views: number) => {
-      this.profile.update(p => ({ ...p, views }));
-    });
+  private mapProfile(p: any): Profile {
+    return {
+      name: p.name, avatarUrl: p.avatar_url || '',
+      musicUrl: p.music_url || '', isDarkMode: p.is_dark_mode || false,
+      views: p.views || 0
+    };
   }
 
   authorize(password: string): boolean {
     if (password === 'admin2026') {
       this.isAuthorized.set(true);
-      if (isPlatformBrowser(this.platformId)) {
-        localStorage.setItem('admin_auth', 'true');
-      }
+      localStorage.setItem('admin_auth', 'true');
       return true;
     }
     return false;
@@ -128,156 +113,84 @@ export class DataService {
 
   logout() {
     this.isAuthorized.set(false);
-    if (isPlatformBrowser(this.platformId)) {
-      localStorage.removeItem('admin_auth');
-    }
+    localStorage.removeItem('admin_auth');
   }
 
-  addCategory(name: string) {
-    this.http.post<Category>('/api/categories', { name }).subscribe({
-      next: (cat) => {
-        console.log('Category added successfully:', cat);
-        this.categories.update(cats => {
-          if (cats.some(c => c.id === cat.id)) return cats;
-          return [...cats, cat];
-        });
-      },
-      error: (err) => console.error('Error adding category:', err)
-    });
+  async addCategory(name: string) {
+    const id = Math.random().toString(36).substring(2, 11);
+    const { error } = await supabase.from('categories').insert({ id, name });
+    if (error) { alert('Erro ao adicionar categoria.'); console.error(error); }
   }
 
-  deleteCategory(id: string) {
-    console.log(`[DataService] deleteCategory called for id: ${id}`);
-    this.deletingIds.update(s => {
-      const next = new Set(s);
-      next.add(id);
-      return next;
-    });
-
-    this.http.delete(`/api/categories/${id}`).subscribe({
-      next: (resp) => {
-        console.log(`[DataService] Successfully deleted ${id} on server, response:`, resp);
-        this.categories.update(cats => cats.filter(c => c.id !== id));
-        this.stopDeleting(id);
-      },
-      error: (err) => {
-        console.error(`[DataService] Failed to delete ${id}:`, err);
-        alert('Erro ao excluir categoria. Verifique sua conexão.');
-        this.stopDeleting(id);
-      }
-    });
-  }
-
-  private stopDeleting(id: string) {
-    this.deletingIds.update(s => {
-      const next = new Set(s);
-      next.delete(id);
-      return next;
-    });
+  async deleteCategory(id: string) {
+    this.deletingIds.update(s => new Set([...s, id]));
+    const { error } = await supabase.from('categories').delete().eq('id', id);
+    if (error) { alert('Erro ao excluir categoria.'); console.error(error); }
+    this.deletingIds.update(s => { const n = new Set(s); n.delete(id); return n; });
   }
 
   refreshCategories() {
-    console.log('[DataService] Refreshing categories...');
-    this.http.get<Category[]>('/api/categories').subscribe(cats => {
-      console.log(`[DataService] Loaded ${cats.length} categories`);
-      this.categories.set(cats);
+    supabase.from('categories').select('*').order('name').then(({ data }) => {
+      if (data) this.categories.set(data.map(this.mapCategory));
     });
   }
 
-  addEntry(entry: Omit<Entry, 'id'>) {
-    this.http.post<Entry>('/api/entries', entry).subscribe({
-      next: (newEntry) => {
-        console.log('Entry added successfully:', newEntry.id);
-        this.entries.update(ents => [newEntry, ...ents]);
-      },
-      error: (err) => {
-        console.error('Error adding entry:', err);
-        alert('Erro ao salvar nova entrada. Verifique o tamanho das imagens ou sua conexão.');
-      }
+  async addEntry(entry: Omit<Entry, 'id'>) {
+    const { error } = await supabase.from('entries').insert({
+      title: entry.title, credits: entry.credits,
+      category_id: entry.categoryId, cover_url: entry.coverUrl,
+      photos: entry.photos
     });
+    if (error) { alert('Erro ao salvar entrada.'); console.error(error); }
   }
 
-  updateEntry(id: string, entry: Partial<Entry>) {
-    this.http.patch<Entry>(`/api/entries/${id}`, entry).subscribe({
-      next: (updated) => {
-        console.log('Entry updated successfully:', id);
-        this.entries.update(ents => ents.map(e => e.id === id ? { ...e, ...updated } : e));
-      },
-      error: (err) => {
-        console.error('Error updating entry:', err);
-        alert('Erro ao atualizar entrada.');
-      }
-    });
+  async updateEntry(id: string, entry: Partial<Entry>) {
+    const patch: any = {};
+    if (entry.title !== undefined) patch.title = entry.title;
+    if (entry.credits !== undefined) patch.credits = entry.credits;
+    if (entry.categoryId !== undefined) patch.category_id = entry.categoryId;
+    if (entry.coverUrl !== undefined) patch.cover_url = entry.coverUrl;
+    if (entry.photos !== undefined) patch.photos = entry.photos;
+
+    const { error } = await supabase.from('entries').update(patch).eq('id', id);
+    if (error) { alert('Erro ao atualizar entrada.'); console.error(error); }
   }
 
-  deleteEntry(id: string) {
-    this.http.delete(`/api/entries/${id}`).subscribe({
-      next: () => {
-        console.log('Entry deleted successfully:', id);
-        this.entries.update(ents => ents.filter(e => e.id !== id));
-      },
-      error: (err) => {
-        console.error('Error deleting entry:', err);
-        alert('Erro ao excluir entrada.');
-      }
-    });
+  async deleteEntry(id: string) {
+    const { error } = await supabase.from('entries').delete().eq('id', id);
+    if (error) { alert('Erro ao excluir entrada.'); console.error(error); }
   }
 
   getEntryById(id: string) {
     return computed(() => this.entries().find(e => e.id === id));
   }
 
-  updateProfile(profile: Partial<Profile>) {
-  const current = this.profile();
+  async updateProfile(patch: Partial<Profile>) {
+    const current = this.profile();
+    const updated = { ...current, ...patch };
+    this.profile.set(updated);
 
-  const updated = {
-    ...current,
-    ...profile
-  };
-
-  this.profile.set(updated);
-
-  return this.http.post('/api/profile', updated).subscribe({
-    next: () => {
-      console.log('Profile updated successfully');
-    },
-    error: (err) => {
-      console.error('Error updating profile:', err);
-    }
-  });
-}
-
-  incrementViews() {
-  return this.http.post('/api/profile/increment-views', {}).subscribe();
-}
-  async uploadImage(file: File): Promise<string> {
-  try {
-    const fileExt = file.name.split('.').pop();
-
-    const fileName = `${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2)}.${fileExt}`;
-
-    const { error } = await supabase.storage
-      .from('portfolio')
-      .upload(fileName, file);
-
-    if (error) {
-      console.error('Erro upload:', error);
-      throw error;
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from('portfolio')
-      .getPublicUrl(fileName);
-
-    console.log('URL DA IMAGEM:', publicUrlData.publicUrl);
-
-    return publicUrlData.publicUrl;
-
-  } catch (err) {
-    console.error(err);
-    throw err;
+    const { error } = await supabase.from('profile').upsert({
+      id: 1,
+      name: updated.name,
+      avatar_url: updated.avatarUrl,
+      music_url: updated.musicUrl,
+      is_dark_mode: updated.isDarkMode,
+      views: updated.views
+    });
+    if (error) console.error('Erro ao atualizar perfil:', error);
   }
-}
+
+  async incrementViews() {
+    await supabase.rpc('increment_views');
+  }
+
+  async uploadImage(file: File): Promise<string> {
+    const ext = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${ext}`;
+    const { error } = await supabase.storage.from('portfolio').upload(fileName, file);
+    if (error) { console.error('Erro upload:', error); throw error; }
+    const { data } = supabase.storage.from('portfolio').getPublicUrl(fileName);
+    return data.publicUrl;
+  }
 }
